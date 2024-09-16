@@ -1,0 +1,1 @@
+This folder contains old files I used to explore different ideas in this project. Most of them will never be looked at again. You may happily ignore everthing here. But there is an off chance it may be useful again, so I keep it around.

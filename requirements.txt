@@ -1,0 +1,7 @@
+matplotlib
+numpy
+torch
+manim
+manimpango
+tqdm
+equiformer_pytorch
