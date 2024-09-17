@@ -15,12 +15,15 @@ Initially, an organism starts as a single cell, thus X(0) = [x1]
 
 #### Reserved cell components
 The first 3 cell components (X[:, :, 0:3]) are reserved for cell positions.
+
 The next 3 cell components (X[:, :, 3:6]) are reserved for cell velocities.
+
 In future, other components of the cell may be reserved for useful features,
 such as mass, or some kind of death signal.
 
 ### Function definitions
 Three functions define the time evolution of an organism: f, b and d.
+
 f: R^mxn -> R^mxn
 defines the changes to an organism and its cell states over time. f takes
 as input the entire organism, and outputs dX/dt. ie. f(X) = dX/dt.
@@ -38,7 +41,9 @@ These three functions, paired with the set of initial vectors x1, cover
 the entire set of possible organismal structures.
 
 Corollaries:
+
 There exists an O = {x1, f, b, d} that generates a California redwood.
+
 There exists an O = {x1, f, b, d} that generates a beating, human heart.
 
 ## Code structure
