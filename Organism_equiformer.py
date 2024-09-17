@@ -161,7 +161,7 @@ class Organism():
     def sphere_loss(self,
                     X,
                     R=3.0,
-                    nonsphere_coeff=0.1,
+                    nonsphere_coeff=0.2,
                     neighbor_coeff=0.01,
                     beat_heart=True,
                     num_neighbors=3,
@@ -180,7 +180,7 @@ class Organism():
         neighbor_mask = cell_distances.argsort(dim=2).argsort(dim=2) < num_neighbors+1
         diag_mask = torch.eye(self.m).bool().repeat(self.batch_size, 1, 1).to(self.device)
 
-        neighbor_penalty = (desired_neighbor_dist - cell_distances)**2 * neighbor_mask * diag_mask
+        neighbor_penalty = (desired_neighbor_dist - cell_distances)**2 * neighbor_mask
         neighbor_penalty[diag_mask] = 0.0
 
         neighbor_penalty = torch.sum(neighbor_penalty, dim=(1, 2))

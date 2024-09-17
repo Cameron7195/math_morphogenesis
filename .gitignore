@@ -1,2 +1,3 @@
 venv/
 media/videos/*/*/partial_movie_files/
+__pycache__/

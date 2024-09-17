@@ -62,4 +62,4 @@ for train_step in range(NUM_TRAIN_STEPS):
 
     if traj_loss < best_loss:
         best_loss = traj_loss
-        torch.save(f_nn.state_dict(), "results/models/bptt_equiformer_model.pt")
+        torch.save(f_nn.state_dict(), "./results/models/bptt_equiformer_model.pt")
