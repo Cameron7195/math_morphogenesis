@@ -161,8 +161,8 @@ class Organism():
     def sphere_loss(self,
                     X,
                     R=3.0,
-                    nonsphere_coeff=0.2,
-                    neighbor_coeff=0.01,
+                    nonsphere_coeff=1.0,
+                    neighbor_coeff=0.05,
                     beat_heart=True,
                     num_neighbors=3,
                     desired_neighbor_dist=1.2):

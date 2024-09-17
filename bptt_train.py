@@ -4,6 +4,7 @@ from Organism_equiformer import *
 import numpy as np
 import torch
 from tqdm import tqdm
+import os
 
 # Hyperparameters
 BATCH_SIZE = 4             # Number of organisms to simulate in parallel
@@ -62,4 +63,5 @@ for train_step in range(NUM_TRAIN_STEPS):
 
     if traj_loss < best_loss:
         best_loss = traj_loss
-        torch.save(f_nn.state_dict(), "./results/models/bptt_equiformer_model.pt")
+        os.makedirs("results/models", exist_ok=True)
+        torch.save(f_nn.state_dict(), "results/models/bptt_equiformer_model.pt")

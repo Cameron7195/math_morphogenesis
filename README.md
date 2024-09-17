@@ -62,10 +62,11 @@ the saved model in the 'load_model' line, e.g.:
 ```f_nn.load_state_dict(torch.load("results/models/bptt_equiformer_model.pt"))
 ```
 Also ensure that the hyperparameters match the hyperparameters used to train the
-model. The animation is constructed by utilizing a manim 'Graph' object.
+model. The animation is constructed by utilizing a manim 'Graph' object. Videos
+are saved to the media/videos/gen_animation/480p15/ directory by default.
 
 Usage:
-```manim -pql main_bptt.py GraphExample -o output_movie_name.mp4
+```manim -pql gen_animation.py GraphExample -o output_movie_name.mp4
 ```
 
 ### Organism_equiformer.py
@@ -98,3 +99,15 @@ are too close or too far.
 6. Create a .mp4 file to simulate the trained organism!
 ```manim -pql gen_animation.py GraphExample -o simulation_1.mp4
 ```
+
+## Citations
+
+Equiformer:
+https://arxiv.org/abs/2206.11990
+https://github.com/lucidrains/equiformer-pytorch?tab=readme-ov-file
+
+Manim:
+https://github.com/3b1b/manim
+
+Growing NCA (inspiration):
+https://distill.pub/2020/growing-ca/
