@@ -104,6 +104,7 @@ pip3 install -r requirements.txt
 ```
     4.1 If pycairo fails to install, consult stackoverflow. It can be
     a little annoying sometimes, depending on OS.
+### Step 2: Run the files, and tweak anything you like!
 5. Train a model:
 ```
 python3 bptt_train.py
