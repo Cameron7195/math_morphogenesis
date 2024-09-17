@@ -64,8 +64,9 @@ python3 main_bptt.py
 
 ### gen_animation.py
 creates the visualization (animation) using manim. Ensure the filename matches
-the saved model in the 'load_model' line, e.g.:
-```f_nn.load_state_dict(torch.load("results/models/bptt_equiformer_model.pt"))
+the saved model in the 'load_model' line, e.g. this line:
+```
+f_nn.load_state_dict(torch.load("results/models/bptt_equiformer_model.pt"))
 ```
 Also ensure that the hyperparameters match the hyperparameters used to train the
 model. The animation is constructed by utilizing a manim 'Graph' object. Videos
