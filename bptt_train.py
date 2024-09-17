@@ -14,8 +14,8 @@ NUM_TRAIN_STEPS = 1000     # Number of trajectory rollout + backprop + gradient
                            # steps (basically num epochs)
 TRAJECTORY_LENGTH = 520    # Number of timesteps to simulate for each organism
 LOSS_TIMESTEPS = 150       # Number of timesteps to calculate loss over
-D_MODEL = 32               # Hidden dimension of the equivariant transformer
-N_HEADS = 4                # Number of attention heads
+D_MODEL = 24               # Hidden dimension of the equivariant transformer
+N_HEADS = 3                # Number of attention heads
 N_LAYERS = 1               # Number of transformer layers
 
 device = torch.device("cpu")
@@ -25,6 +25,7 @@ f_nn = f_equiformer_net(STATE_SIZE,
                         n_heads=N_HEADS,
                         n_layers=N_LAYERS,
                         device=device)
+f_nn.load_state_dict(torch.load("results/models/bptt_equiformer_model.pt"))
 
 # Print model
 print(f_nn)
@@ -64,4 +65,4 @@ for train_step in range(NUM_TRAIN_STEPS):
     if traj_loss < best_loss:
         best_loss = traj_loss
         os.makedirs("results/models", exist_ok=True)
-        torch.save(f_nn.state_dict(), "results/models/bptt_equiformer_model.pt")
+        torch.save(f_nn.state_dict(), "results/models/bptt_equiformer_model1.pt")

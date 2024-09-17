@@ -20,11 +20,11 @@ class f_equiformer_net(torch.nn.Module):
                                            dim_in=n-6,
                                            dim_head=d_model//n_heads,
                                            heads=n_heads,
-                                           radial_hidden_dim=d_model//8,
+                                           radial_hidden_dim=3*d_model//n_heads,
                                            num_degrees=2,
                                            depth=n_layers,
                                            num_neighbors=6,
-                                           num_linear_attn_heads = 0)
+                                           num_linear_attn_heads = 1)
 
 
         self.state_update_proj = nn.Linear(self.d_model, n-6)
@@ -61,7 +61,9 @@ class f_equiformer_net(torch.nn.Module):
         y_eq = y_eq.permute(0, 1, 3, 2) # [batch, m, 3, d_model]
 
         cell_state_update = self.state_update_proj(y_inv)
-        cell_forces = self.force_proj(y_eq).squeeze(-1)
+
+        cell_desires = self.force_proj(y_eq).squeeze(-1)
+        cell_forces = cell_desires - cell_positions
 
         # Enforce F_net=0 for the entire organism.
         net_force = cell_forces.mean(dim=1, keepdim=True)
@@ -74,7 +76,7 @@ class Organism():
                  n,
                  f_nn,
                  batch_size=1,
-                 noise=0.04,
+                 noise=0.01,
                  dt=0.1,
                  friction_coeff=4.0):
         if n < 6:
@@ -86,7 +88,9 @@ class Organism():
         self.noise = noise
 
         init_pos_vel = torch.zeros(batch_size, 1, 6).to(self.device)
-        self.X = torch.cat((init_pos_vel, self.f_nn.init_state_params.repeat(batch_size, 1, 1)), dim=-1)
+        init_state_params = self.f_nn.init_state_params.repeat(batch_size, 1, 1)
+        init_state_params = init_state_params / (torch.norm(init_state_params, dim=2, keepdim=True) + 1e-8)
+        self.X = torch.cat((init_pos_vel, init_state_params), dim=-1)
 
         # Add noise to initial state, excluding position and velocity
         self.X[:, :, 6:] += self.noise*torch.randn_like(self.X[:, :, 6:])
@@ -165,7 +169,7 @@ class Organism():
                     neighbor_coeff=0.05,
                     beat_heart=True,
                     num_neighbors=3,
-                    desired_neighbor_dist=1.2):
+                    desired_neighbor_dist=1.75):
         
         cell_positions = X[:, :, 0:3]                           # [batch, m, 3]
         cell_displacements =   cell_positions[:, None, :, :] \
@@ -183,11 +187,15 @@ class Organism():
         neighbor_penalty = (desired_neighbor_dist - cell_distances)**2 * neighbor_mask
         neighbor_penalty[diag_mask] = 0.0
 
+        #print("Desired r: ", desired_r)
+        #print("Average distance from origin: ", cell_positions.norm(dim=-1).mean())
+        #print("Average neighbor distance: ", cell_distances[~diag_mask & neighbor_mask].mean())
+
         neighbor_penalty = torch.sum(neighbor_penalty, dim=(1, 2))
 
         return nonsphere_coeff * nonsphere_penalty, neighbor_coeff * neighbor_penalty
     
-    def heartbeat_signal(self, t, amplitude=0.5, period=25):
+    def heartbeat_signal(self, t, amplitude=0.5, period=30):
         # Returns a heartbeat-like signal, given a timestep
         # Adapted from here: https://www.desmos.com/calculator/2bqvtdd6vd
         return amplitude * 0.3116*(
