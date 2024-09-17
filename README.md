@@ -58,7 +58,8 @@ no cells die currently. This initial implementation serves as a baseline for
 future work.
 
 Usage:
-```python3 main_bptt.py
+```
+python3 main_bptt.py
 ```
 
 ### gen_animation.py
@@ -71,7 +72,8 @@ model. The animation is constructed by utilizing a manim 'Graph' object. Videos
 are saved to the media/videos/gen_animation/480p15/ directory by default.
 
 Usage:
-```manim -pql gen_animation.py GraphExample -o output_movie_name.mp4
+```
+manim -pql gen_animation.py GraphExample -o output_movie_name.mp4
 ```
 
 ### Organism_equiformer.py
@@ -88,21 +90,26 @@ are too close or too far.
 ### Step 1: create a python virtual environment and install requirements.
 1. Open a terminal and cd to this directory.
 2. Run the following command to create a python virtual environment:
-```python3 -m venv venv
+```
+python3 -m venv venv
 ```
 3. Run the following command to activate the virtual environment:
-```source venv/bin/activate
+```
+source venv/bin/activate
 ```
 4. Run the following commands to install necessary requirements:
-```pip3 install -r requirements.txt
+```
+pip3 install -r requirements.txt
 ```
     4.1 If pycairo fails to install, consult stackoverflow. It can be
     a little annoying sometimes, depending on OS.
 5. Train a model:
-```python3 bptt_train.py
+```
+python3 bptt_train.py
 ```
 6. Create a .mp4 file to simulate the trained organism!
-```manim -pql gen_animation.py GraphExample -o simulation_1.mp4
+```
+manim -pql gen_animation.py GraphExample -o simulation_1.mp4
 ```
 
 ## Citations
