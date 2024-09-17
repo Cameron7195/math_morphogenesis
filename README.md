@@ -1,8 +1,8 @@
 # A Mathematical Model of Morphogenesis
 
 ## Overview of the model
-This repository outlines the code for "A Mathematical Model of Morphogenesis" by
-Cameron Witkowski, supervised by Stephen Brown and Kevin Truong.
+This repository outlines the code for "A Mathematical Model of Morphogenesis," a 
+MASc Thesis by Cameron Witkowski, and supervised by Stephen Brown and Kevin Truong.
 
 ### Object definitions
 A cell is defined as a vector, x, \in R^n.
