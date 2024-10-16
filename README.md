@@ -7,7 +7,7 @@ MASc Thesis by Cameron Witkowski, and supervised by Stephen Brown and Kevin Truo
 ### Object definitions
 A cell is defined as a vector, $x \in R^n$.
 An organism is defined as a collection of cells, represented by
-X = [x1, x2, ..., xm] \in R^mxn
+X = [x1, x2, ..., xm] $\in R^{m\times n}$
 
 x and X are functions of t, ie. x(t), X(t).
 
@@ -24,15 +24,15 @@ such as mass, or some kind of death signal.
 ### Function definitions
 Three functions define the time evolution of an organism: f, b and d.
 
-f: R^mxn -> R^mxn
+f: $R^{m\times n} \to R^{m\times n}$
 defines the changes to an organism and its cell states over time. f takes
 as input the entire organism, and outputs dX/dt. ie. f(X) = dX/dt.
 
-b: R^n -> {0, 1}
+b: $R^n \to ${0, 1}
 defines the birth (cell division) function. Returns 1 if a cell should divide
 and 0 if the cell should do nothing.
 
-d: R^n -> {0, 1}
+d: $R^n \to ${0, 1}
 defines the cell death function. Returns 1 if a cell should die and 0 if
 the cell should do nothing.
 
@@ -42,9 +42,9 @@ the entire set of possible organismal structures.
 
 Corollaries:
 
-There exists an O = {x1, f, b, d} that generates a California redwood.
+There exists an O = $`\{x_{1}, f, b, d\}`$ that generates a California redwood.
 
-There exists an O = {x1, f, b, d} that generates a beating, human heart.
+There exists an O = $`\{x_1, f, b, d\}`$ that generates a beating, human heart.
 
 ## Code structure
 
