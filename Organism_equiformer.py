@@ -89,7 +89,6 @@ class Organism():
 
         init_pos_vel = torch.zeros(batch_size, 1, 6).to(self.device)
         init_state_params = self.f_nn.init_state_params.repeat(batch_size, 1, 1)
-        init_state_params = init_state_params / (torch.norm(init_state_params, dim=2, keepdim=True) + 1e-8)
         self.X = torch.cat((init_pos_vel, init_state_params), dim=-1)
 
         # Add noise to initial state, excluding position and velocity
@@ -103,15 +102,7 @@ class Organism():
 
     def evolve(self):
         # Euler method
-        new_X = self.X + self.dt*self.f(self.X)
-
-        # Take the normalized direction of the cell state. We artificially enforce
-        # the cell state to be a unit vector, to ensure numerical stability during
-        # training.
-        x_h_norm = new_X[:, :, 6:] / (torch.norm(new_X[:, :, 6:], dim=2, keepdim=True) + 1e-8)
-
-        # Piece together the new X.
-        self.X = torch.cat((new_X[:, :, 0:6], x_h_norm), dim=2)
+        self.X = self.X + self.dt*self.f(self.X)
 
         # Call d(x) to kill any cells that should die. Currently unimplemented.
         self.die(self.X)
