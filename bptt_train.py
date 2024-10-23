@@ -18,7 +18,8 @@ D_MODEL = 24               # Hidden dimension of the equivariant transformer
 N_HEADS = 3                # Number of attention heads
 N_LAYERS = 1               # Number of transformer layers
 
-device = torch.device("cpu")
+#device = torch.device("cpu")
+device = torch.device("cuda")
 
 f_nn = f_equiformer_net(STATE_SIZE,
                         d_model=D_MODEL,

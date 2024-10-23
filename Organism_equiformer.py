@@ -24,11 +24,11 @@ class f_equiformer_net(torch.nn.Module):
                                            num_degrees=2,
                                            depth=n_layers,
                                            num_neighbors=6,
-                                           num_linear_attn_heads = 1)
+                                           num_linear_attn_heads = 1).to(device)
 
 
-        self.state_update_proj = nn.Linear(self.d_model, n-6)
-        self.force_proj = nn.Linear(self.d_model, 1)
+        self.state_update_proj = nn.Linear(self.d_model, n-6).to(device)
+        self.force_proj = nn.Linear(self.d_model, 1).to(device)
 
         init_params = torch.randn(1, n-6)
         init_params = init_params / (torch.norm(init_params, dim=1, keepdim=True) + 1e-8)
@@ -88,8 +88,8 @@ class Organism():
         self.noise = noise
 
         init_pos_vel = torch.zeros(batch_size, 1, 6).to(self.device)
-        init_state_params = self.f_nn.init_state_params.repeat(batch_size, 1, 1)
-        self.X = torch.cat((init_pos_vel, init_state_params), dim=-1)
+        init_state_params = self.f_nn.init_state_params.repeat(batch_size, 1, 1).to(self.device)
+        self.X = torch.cat((init_pos_vel, init_state_params), dim=-1).to(self.device)
 
         # Add noise to initial state, excluding position and velocity
         self.X[:, :, 6:] += self.noise*torch.randn_like(self.X[:, :, 6:])

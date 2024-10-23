@@ -100,6 +100,9 @@ source venv/bin/activate
 ```
 4. Run the following commands to install necessary requirements:
 ```
+# for linux, you need pangocario
+sudo apt install libpango1.0-dev -y
+
 pip3 install -r requirements.txt
 ```
     4.1 If pycairo fails to install, consult stackoverflow. It can be

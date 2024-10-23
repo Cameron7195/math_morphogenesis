@@ -5,3 +5,4 @@ manim
 manimpango
 tqdm
 equiformer_pytorch
+
