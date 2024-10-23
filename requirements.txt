@@ -5,3 +5,6 @@ manim
 manimpango
 tqdm
 equiformer_pytorch
+scipy
+trimesh
+rtree
