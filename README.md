@@ -1,4 +1,4 @@
-# A Mathematical Model of Morphogenesis
+# SE(3) Equivariant Transformer Cellural Automata
 
 ## Overview of the model
 This repository outlines the code for "A Mathematical Model of Morphogenesis," a 
