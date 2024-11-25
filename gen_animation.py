@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 # Note, these hyperparameters MUST match the ones used to train the model
-STATE_SIZE = 22            # 6 position & velocity, 16 cell-state features
+STATE_SIZE = 14            # 6 position & velocity, 16 cell-state features
 TRAJECTORY_LENGTH = 520    # Number of timesteps to simulate for each organism
 D_MODEL = 24               # Hidden dimension of the equivariant transformer
 N_HEADS = 4                # Number of attention heads
@@ -16,8 +16,8 @@ f_nn = f_equiformer_net(STATE_SIZE, d_model=D_MODEL, n_heads=N_HEADS, n_layers=N
 f_nn.eval()
 # Load model
 
-f_nn.load_state_dict(torch.load("results/models/bptt_equiformer_model_rot_big.pt"))
-#f_nn.load_state_dict(torch.load("results/models/bptt_equiformer_model_rot_2.pt"))
+#f_nn.load_state_dict(torch.load("results/models/bptt_offset_nonsphere.pt"))
+f_nn.load_state_dict(torch.load("results/models/bptt_grad_normal_1.pt"))
 
 
 class GraphExample(Scene):
@@ -65,7 +65,7 @@ class GraphExample(Scene):
 
                 self.add(D)
                 self.wait(0.1)
-                print(org.X[:, :, 7])
+                print(org.X[:, :, 6])
 
             self.wait()
             return

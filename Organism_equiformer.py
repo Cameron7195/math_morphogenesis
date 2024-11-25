@@ -6,17 +6,20 @@ import copy
 import pdb
 import math
 from equiformer_pytorch import Equiformer
-from s4torch import S4Model
+from se3_transformer_pytorch import SE3Transformer
 from scipy.spatial.transform import Rotation as R
-from scipy.optimize import minimize
 import trimesh
 import os
-from chamferdist import ChamferDistance
 from torch.autograd import grad
 from torch.autograd.functional import hessian
-from scipy.optimize import differential_evolution
-from egnn_pytorch import EGNN_Network
 import matplotlib.pyplot as plt
+from skimage import color
+
+from matplotlib.colors import Normalize, hsv_to_rgb
+
+from PIL import Image
+
+
 
 # import PCA
 from sklearn.decomposition import PCA
@@ -174,19 +177,16 @@ class f_equiformer_net(torch.nn.Module):
                                            radial_hidden_dim=3*d_model//n_heads,
                                            num_degrees=2,
                                            depth=n_layers,
-                                           num_neighbors=6,
-                                           num_linear_attn_heads = 1)
+                                           num_neighbors=5,
+                                           num_linear_attn_heads = 0)
         
-        # self.egnn_net = EGNN_Network(depth=n_layers,
-        #                 dim=self.input_dim,
-        #                 m_dim = d_model,
-        #                 num_nearest_neighbors=6,        # number of nearest neighbors to consider
-        #                 global_linear_attn_heads=0,
-        #                 global_linear_attn_every=0,
-        #                 num_global_tokens=0,
-        #                 valid_radius=1e4,
-        #                 fourier_features = 16)
-        
+        # self.se3_tr_model = SE3Transformer(dim=d_model,
+        #                                    dim_in=self.input_dim,
+        #                                    dim_head=d_model//n_heads,
+        #                                    heads=n_heads,
+        #                                    num_neighbors=6,
+        #                                    num_degrees=2,
+        #                                    depth=n_layers)
 
         self.state_update_proj = nn.Linear(self.d_model, self.d_model)
         self.num_k = 512
@@ -199,15 +199,6 @@ class f_equiformer_net(torch.nn.Module):
         self.basis_matrices = 1
         self.desire_basis_proj = nn.Linear(self.d_model, self.basis_matrices*self.input_dim)
 
-        # self.s4_model = S4Model(d_input=self.input_dim+3,
-        #                         d_model=self.d_model,
-        #                         d_output=self.input_dim,
-        #                         n_blocks=1,
-        #                         n=8,
-        #                         l_max=520,)
-        
-        # self.s4_inputs = None
-        # self.s4_outputs = None
 
         init_params = torch.randn(1, self.input_dim) / 2.7
         #init_params = init_params / (torch.norm(init_params, dim=1, keepdim=True) + 1e-8)
@@ -266,35 +257,6 @@ class f_equiformer_net(torch.nn.Module):
         cell_desires = self.force_proj(y_eq).squeeze(-1)
         cell_forces = cell_desires - cell_positions
 
-        # if self.s4_inputs is None:
-        #     y_inv_reshape = cell_state_desire.view(batch_size*m, 1, self.input_dim)
-        #     self.s4_inputs = y_inv_reshape
-        #     # cat with cell_desires
-        #     cd_reshape = cell_desires.view(batch_size*m, 1, 3)
-        #     self.s4_inputs = torch.cat((self.s4_inputs, cd_reshape), dim=-1)
-        # else:
-        #     if self.s4_inputs.shape[0] // batch_size != m:
-        #         # We divided last timestep. Need to repeat batch dim to match batch * m.
-        #         self.s4_inputs = self.s4_inputs.repeat(2, 1, 1)
-        #     #pdb.set_trace()
-        #     y_inv_reshape = cell_state_desire.view(batch_size*m, 1, self.input_dim)
-        #     # cat with cell_desires
-        #     cd_reshape = cell_desires.view(batch_size*m, 1, 3)
-        #     y_inv_reshape = torch.cat((y_inv_reshape, cd_reshape), dim=-1)
-
-        #     self.s4_inputs = torch.cat((self.s4_inputs, y_inv_reshape), dim=1)
-
-        # if self.s4_inputs.shape[1] < 520:
-        #     # We need to pad the input to 520 timesteps
-        #     pad_amount = 520 - self.s4_inputs.shape[1]
-        #     pad = torch.zeros(batch_size*m, pad_amount, self.input_dim+3).to(self.device)
-        #     pad_inps = torch.cat((self.s4_inputs, pad), dim=1)
-        # else:
-        #     pad_amount = 0
-        #     pad_inps = self.s4_inputs[:, -520:]
-        
-        # s4_output = self.s4_model(pad_inps)
-        # self.s4_outputs = s4_output[:, :-pad_amount]
 
         cell_state_urges = cell_state_desire - cell_states
         net_urge = cell_state_urges.mean(dim=1, keepdim=True)
@@ -321,7 +283,7 @@ class Organism():
                  n,
                  f_nn,
                  batch_size=1,
-                 noise=0.01,
+                 noise=0.0001,
                  dt=0.1,
                  friction_coeff=4.0,
                  obj_out_dir=None,
@@ -340,6 +302,7 @@ class Organism():
         init_state_vel = torch.zeros_like(init_state_params)
         #self.X = torch.cat((init_pos_vel, init_state_params, init_state_vel), dim=-1)
         self.X = torch.cat((init_pos_vel, init_state_params), dim=-1) 
+        self.prev_X = self.X
         #self.X = torch.zeros(batch_size, 1, n).to(self.device)
 
         # Add noise to initial state, excluding position and velocity
@@ -363,13 +326,25 @@ class Organism():
             #if os.path.exists(self.obj_out_dir):
             #    os.system(f'rm -r {self.obj_out_dir}')
             os.makedirs(self.obj_out_dir, exist_ok=True)
-            self.write_obj(self.mesh_save)
+            os.makedirs(self.obj_out_dir + "_6", exist_ok=True)
+            os.makedirs(self.obj_out_dir + "_7", exist_ok=True)
+            os.makedirs(self.obj_out_dir + "_8", exist_ok=True)
+            self.write_obj(out_dir=self.obj_out_dir + "_6", morphogen_idx=6)
+            self.write_obj(out_dir=self.obj_out_dir + "_7", morphogen_idx=7)
+            self.write_obj(out_dir=self.obj_out_dir + "_8", morphogen_idx=8)
+
+        self.squared_vels = 0
+        self.squared_state_vels = 0
 
 
     def evolve(self):
         # Euler method
+        self.prev_X = self.X
         fx = self.f(self.X)
         self.X = self.X + self.dt*fx
+
+        self.squared_vels += (fx[:, :, 0:3].norm(dim=-1)**2).sum(dim=1)
+        self.squared_state_vels += (fx[:, :, 6:].norm(dim=-1)**2).sum(dim=1)
 
         # x_h_norm = fx[:, :, 6:] / (torch.norm(fx[:, :, 6:], dim=2, keepdim=True))
         # #rotation_matrix = self.rotary_encoding_matrix(self.n-6, device=self.device)
@@ -386,7 +361,9 @@ class Organism():
 
         self.t += 1
         if self.obj_out_dir is not None:
-            self.write_obj(self.mesh_save)
+            self.write_obj(out_dir=self.obj_out_dir + "_6", morphogen_idx=6)
+            self.write_obj(out_dir=self.obj_out_dir + "_7", morphogen_idx=7)
+            self.write_obj(out_dir=self.obj_out_dir + "_8", morphogen_idx=8)
         return
     
     def f(self, X):
@@ -422,12 +399,12 @@ class Organism():
         # which will determine when a cell divides, and play a role in loss function
         # so that b(x) can depend on a neural network and be learned.
         
-        if self.m < 32 and self.t % 80 == 1:
+        if self.m < 128 and self.t % 60 == 1:
             new_xi = X
-            if self.m <= 2:
-                new_xi = new_xi + 0.1*self.noise*torch.ones_like(X).to(self.device) # [batch, 1, n]
-            else:
-                new_xi = new_xi + 0.1*self.noise*torch.randn_like(X).to(self.device) # [batch, m, n]
+            # if self.m <= 2:
+            #     new_xi = new_xi + 0.1*self.noise*torch.ones_like(X).to(self.device) # [batch, 1, n]
+            # else:
+            new_xi = new_xi + 0.1*self.noise*torch.randn_like(X).to(self.device) # [batch, m, n]
             self.X = torch.cat((self.X, new_xi), dim=1)                  # [batch, 2m, n]
             self.m *= 2
 
@@ -510,7 +487,7 @@ class Organism():
             pc1 = point_cloud
             pc2 = torch.tensor(mesh.vertices, dtype=torch.float32).to(self.device)[None, :, :]
             # Take random sampling of 1% of the mesh vertices
-            idx = torch.randperm(pc2.shape[1])[:int(0.01*pc2.shape[1])]
+            idx = torch.randperm(pc2.shape[1])[:self.m]
             pc2 = pc2[:, idx, :]
             pc2 = pc2.repeat(pc1.shape[0], 1, 1)
 
@@ -518,39 +495,13 @@ class Organism():
             pc1 = pc1 - pc1.mean(dim=1, keepdim=True)
             pc2 = pc2 - pc2.mean(dim=1, keepdim=True)
 
-            # Next, we'll rotate the point cloud to align as best as possible with the mesh
-            # cov_pc1 = torch.bmm(pc1.transpose(1, 2), pc1) / (pc1.shape[1] - 1)  # Shape: (batch_size, 3, 3)
-            # cov_pc2 = torch.bmm(pc2.transpose(1, 2), pc2) / (pc2.shape[1] - 1)  # Shape: (1, 3, 3)
-            # e_vecs1 = torch.linalg.eigh(cov_pc1).eigenvectors.flip(dims=[2])     # Flip for descending order
-            # e_vecs1 = torch.cat([e_vecs1[:, 0:2, :], torch.cross(e_vecs1[:, 0, :], e_vecs1[:, 1, :], dim=-1)[:, None, :]], dim=1)       # Ensure right-handed coordinate system
-            # e_vecs2 = torch.linalg.eigh(cov_pc2).eigenvectors.flip(dims=[2])
-            # e_vecs2 = torch.cat([e_vecs2[:, 0:2, :], torch.cross(e_vecs2[:, 0, :], e_vecs2[:, 1, :], dim=-1)[:, None, :]], dim=1)       # Ensure right-handed coordinate system
-            # rot_mats = torch.bmm(e_vecs2, e_vecs1.transpose(1, 2))  # Shape: (batch_size, 3, 3)
-            # pc1 = torch.bmm(pc1, rot_mats.transpose(1, 2))  # Apply rotation to pc1
-
-            # params is shape (batch_size, 3)
-            #rot_mats = torch.tensor(R.from_quat(params.reshape(self.batch_size, 4)).as_matrix(), dtype=torch.float).to(self.device)
-            #pdb.set_trace()
-            #pc1 = torch.bmm(pc1, rot_mats.transpose(1, 2))  # Apply rotation to pc1
             
-            chamdist = ChamferDistance()
-            chamfer_loss = chamdist(pc1, pc2, bidirectional=True, point_reduction='mean', batch_reduction=None)
+            # Compute sum of all squared distances
 
-            # dists = torch.cdist(pc1, pc2, p=2)
-
-
-            # temp = 0.1
-            # neg_log_dists = -torch.log(dists)
-            # pc1_attention = torch.softmax(neg_log_dists / temp, dim=1)
-            # pc2_attention = torch.softmax(neg_log_dists / temp, dim=2)
-
-            # chamfer_loss = torch.sum(pc1_attention * dists**2, dim=1).mean(dim=-1) + torch.sum(pc2_attention * dists, dim=2).mean(dim=-1)
-
-            # Return the sum of squared distances
-            if optimizing:
-                return chamfer_loss.mean()
-            else:
-                return chamfer_loss
+            rel_positions = pc1[:, :, None, :] - pc2[:, None, :, :]
+            rel_l2_squared = torch.norm(rel_positions, dim=3)**2
+            total_loss = rel_l2_squared.sum(dim=(1, 2))
+            return total_loss
             
         def jac_fn(params, *args):
             return compute_jacobian(params, *args)
@@ -597,17 +548,29 @@ class Organism():
         #pdb.set_trace()
         errors = compute_error(self.init_guess_params, X[:, :, :3], mesh)
             # Compute the error
-        return 5*errors, torch.zeros(1) #5*scales_dif**2 + max_dif**2
+        return 0.0004*errors
     
-    def neighbour_loss(self, X, desired_neighbor_dist=1.75):
+    def neighbour_loss(self, X, desired_neighbor_dist=0.9):
         cell_positions = X[:, :, 0:3]                           # [batch, m, 3]
         cell_displacements =   cell_positions[:, None, :, :] \
                              - cell_positions[:, :, None, :]    # [batch, m, m, 3]
         cell_distances = torch.norm(cell_displacements, dim=3)
 
         # Mask out the diagonal and only consider the (num_neighbors) closest neighbors
-        neighbor_mask = cell_distances.argsort(dim=2).argsort(dim=2) < 3
+        num_neighbors = 4
+        neighbor_mask = cell_distances.argsort(dim=2).argsort(dim=2) < num_neighbors + 1
         diag_mask = torch.eye(self.m).bool().repeat(self.batch_size, 1, 1).to(self.device)
+        desired_neighbor_dist = desired_neighbor_dist * torch.exp(X[:, :, 7].unsqueeze(-1))
+
+        max_morphogen = X[:, :, 7].max(dim=1, keepdim=True)[0]
+        min_morphogen = X[:, :, 7].min(dim=1, keepdim=True)[0]
+        morphogen_range = max_morphogen - min_morphogen
+        middle_morphogen = (max_morphogen + min_morphogen) / 2
+        desired_neighbor_dist = 1.5 #* torch.ones_like(cell_positions.norm(dim=-1))
+        # Top 10% of cells in morphogen conc
+        #desired_neighbor_dist[X[:, :, 7] > middle_morphogen + 0.4*morphogen_range] = 0.7
+        #desired_neighbor_dist = desired_neighbor_dist * ((X[:, :, 7] - min_morphogen)/morphogen_range + 0.05)
+        #desired_neighbor_dist = (desired_neighbor_dist[:, :, None] + desired_neighbor_dist[:, None, :])/2
 
         neighbor_penalty = (desired_neighbor_dist - cell_distances)**2 * neighbor_mask
         #neighbor_penalty = 1/(cell_distances**2 + 1e-3) * neighbor_mask
@@ -615,14 +578,14 @@ class Organism():
 
         neighbor_penalty = torch.sum(neighbor_penalty, dim=(1, 2))
 
-        return 0.05*neighbor_penalty
+        return 0.02*neighbor_penalty
 
     def sphere_loss(self,
                     X,
                     R=3.0,
-                    nonsphere_coeff=1.0,
+                    nonsphere_coeff=3.0,
                     neighbor_coeff=0.05,
-                    beat_heart=True,
+                    beat_heart=False,
                     num_neighbors=3,
                     desired_neighbor_dist=1.75):
         
@@ -632,6 +595,16 @@ class Organism():
         cell_distances = torch.norm(cell_displacements, dim=3)  # [batch, m, m]
 
         desired_r = R + self.heartbeat_signal(self.t, amplitude=1.0, period=10) if beat_heart else R
+
+        max_morphogen = X[:, :, 7].max(dim=1, keepdim=True)[0]
+        min_morphogen = X[:, :, 7].min(dim=1, keepdim=True)[0]
+        morphogen_range = max_morphogen - min_morphogen
+        middle_morphogen = (max_morphogen + min_morphogen) / 2
+        desired_r = 4.0 * torch.ones_like(cell_positions.norm(dim=-1))
+        # Top 10% of cells in morphogen conc
+        desired_r = desired_r * ((X[:, :, 7] - min_morphogen)/morphogen_range + 0.1)
+        
+       # print(desired_r)
 
         nonsphere_penalty = ((cell_positions.norm(dim=-1) - desired_r)**2).mean(dim=-1)
 
@@ -648,7 +621,7 @@ class Organism():
 
         neighbor_penalty = torch.sum(neighbor_penalty, dim=(1, 2))
 
-        return nonsphere_coeff * nonsphere_penalty, neighbor_coeff * neighbor_penalty
+        return nonsphere_coeff * nonsphere_penalty
 
     def elipse_loss(self,
                     X,
@@ -669,7 +642,7 @@ class Organism():
         return nonsphere_coeff * nonsphere_penalty
 
 
-    def compute_vector_scalar_correlation(self, X: torch.Tensor, morphogen_idx: int = 7) -> torch.Tensor:
+    def compute_vector_scalar_correlation(self, X: torch.Tensor, morphogen_idx: int = 7, radial=False, override_w = None, project1=None, project2=None) -> torch.Tensor:
         """
         Compute rotation-invariant correlation between position vectors and morphogen values for each batch.
         Args:
@@ -681,19 +654,48 @@ class Organism():
         # Extract positions and morphogen values
         #pdb.set_trace()
         cell_positions = X[:, :, :3]                    # [batch, m, 3]
+        if radial == True:
+            cell_positions = torch.norm(cell_positions, dim=-1, keepdim=True)  # [batch, m, 1]
+        if project1 != None:
+                        # Ensure w1_unit is of shape [batch, 3]
+            w1_unit = project1 / torch.norm(project1, dim=-1, keepdim=True)  # [batch, 3]
+
+            # Compute dot product between cell_positions and w1_unit
+            dot_products = torch.sum(cell_positions * w1_unit[:, None, :], dim=2, keepdim=True)  # [batch, m, 1]
+
+            # Project onto plane
+            cell_positions = cell_positions - dot_products * w1_unit[:, None, :]  # [batch, m, 3]
+            #residual = torch.sum(cell_positions * w1_unit[:, None, :, 0], dim=2)  # [batch, m]
+            #print(residual)
+            if project2 != None:
+                    # Ensure w2_unit is of shape [batch, 3]
+                w2_unit = project2 / torch.norm(project2, dim=-1, keepdim=True)  # [batch, 3]
+
+                # Compute dot product between cell_positions and w2_unit_in_plane
+                dot_products = torch.sum(cell_positions * w2_unit[:, None, :], dim=2, keepdim=True)  # [batch, m, 1]
+
+                # Project onto line orthogonal to w2_unit_in_plane
+                cell_positions = cell_positions - dot_products * w2_unit[:, None, :]  # [batch, m, 3]
+        if override_w is not None:
+            # project onto the line defined by w
+            w_unit = override_w / torch.norm(override_w, dim=-1, keepdim=True)
+            dot_products = torch.sum(cell_positions * w_unit[:, None, :], dim=2, keepdim=True)
+            cell_positions = dot_products
+
         morphogen_vals = X[:, :, morphogen_idx]         # [batch, m]
-        # Compute w using pseudo-inverse for each batch
-        # (X^T X)^(-1) X^T m
-        XtX = torch.bmm(cell_positions.transpose(1, 2), cell_positions)  # [batch, 3, 3]
-        Xtm = torch.bmm(cell_positions.transpose(1, 2),
-                        morphogen_vals.unsqueeze(-1))   # [batch, 3, 1]
-        
-        # Solve XtX @ w = Xtm for each batch
-        w = torch.linalg.solve(XtX, Xtm)              # [batch, 3, 1]
-        # Compute predicted values
-        m_hat = torch.bmm(cell_positions, w).squeeze(-1)  # [batch, m]
-        # Center the variables for each batch
         m_centered = morphogen_vals - morphogen_vals.mean(dim=1, keepdim=True)
+        # Compute w using pseudo-inverse for each batch
+        # Prepare X and y for least squares
+        y = m_centered.unsqueeze(-1)  # [batch, m, 1]
+
+        w = torch.linalg.lstsq(cell_positions, y).solution
+
+
+        # Compute predicted values
+        m_hat = torch.bmm(cell_positions, w).squeeze(-1) # [batch, m]
+
+        # Center the variables for each batch
+        
         m_hat_centered = m_hat - m_hat.mean(dim=1, keepdim=True)
         # Compute correlation for each batch
         numerator = (m_centered * m_hat_centered).sum(dim=1)
@@ -702,13 +704,100 @@ class Organism():
             (m_hat_centered ** 2).sum(dim=1)
         )
         correlation = numerator / denominator
-        # print("*******")
-        # print(correlation.min())
-        # print(correlation.max())
-        # print(morphogen_vals.min())
-        # print(morphogen_vals.max())
-        # print("*******")
-        return 5*correlation**2
+        return 20*correlation.abs(), w[:, :, 0]
+    
+    def compute_total_morphogen_correlation(self, X: torch.Tensor, morphogen_indices: list = [6, 7, 8]) -> torch.Tensor:
+        """
+        Compute rotation-invariant correlation between position vectors and morphogen values for each batch,
+        using orthogonal basis vectors.
+
+        Args:
+            X: Tensor of shape (batch, m, features) containing batched data
+            morphogen_indices: List of indices of the morphogen values in the features dimension
+
+        Returns:
+            total_correlation: Tensor of shape (batch,) containing the total correlation for each batch
+        """
+        # Extract positions and morphogen values
+        cell_positions = X[:, :, :3]  # [batch, m, 3]
+        morphogen_vals = X[:, :, morphogen_indices]  # [batch, m, 3]
+
+        # Compute W using least squares for each batch
+        # W = (X^T X)^(-1) X^T M
+        XtX = torch.bmm(cell_positions.transpose(1, 2), cell_positions)  # [batch, 3, 3]
+        XtM = torch.bmm(cell_positions.transpose(1, 2), morphogen_vals)  # [batch, 3, 3]
+
+        # Solve for W: XtX W = XtM
+        W = torch.linalg.solve(XtX, XtM)  # [batch, 3, 3]
+
+        # Perform Gram-Schmidt orthogonalization on the columns of W for each batch
+        def gram_schmidt(W_batch):
+            # W_batch: [3, 3]
+            Q_list = []
+            for i in range(3):
+                v = W_batch[:, i]  # [3]
+                for j in range(i):
+                    qj = Q_list[j]  # [3]
+                    # Compute the projection of v onto qj
+                    proj = (torch.dot(v, qj) / torch.dot(qj, qj)) * qj
+                    # Subtract the projection from v to make it orthogonal to qj
+                    v = v - proj
+                Q_list.append(v)
+            # Stack the orthogonal vectors to form Q_batch
+            Q_batch = torch.stack(Q_list, dim=1)  # [3, 3]
+            return Q_batch
+
+        # Apply Gram-Schmidt orthogonalization batch-wise
+        W_orth = torch.stack([gram_schmidt(W[b]) for b in range(W.shape[0])], dim=0)  # [batch, 3, 3]
+
+        # Compute predicted morphogen values
+        M_hat = torch.bmm(cell_positions, W_orth)  # [batch, m, 3]
+
+        # Center the variables for each batch
+        M_centered = morphogen_vals - morphogen_vals.mean(dim=1, keepdim=True)
+        M_hat_centered = M_hat - M_hat.mean(dim=1, keepdim=True)
+
+        # Flatten M_hat_centered and M_centered along m and features dimensions
+        M_hat_flat = M_hat_centered.reshape(M_hat_centered.shape[0], -1)  # [batch, m*3]
+        M_centered_flat = M_centered.reshape(M_centered.shape[0], -1)      # [batch, m*3]
+
+        # Compute correlation for each batch
+        numerator = (M_hat_flat * M_centered_flat).sum(dim=1)
+        denominator = torch.sqrt(
+            (M_hat_flat ** 2).sum(dim=1) * (M_centered_flat ** 2).sum(dim=1)
+        )
+        correlation = numerator / denominator  # [batch,]
+
+        # Return the absolute value of the correlation scaled as per original code
+        return 20 * correlation.abs()
+    
+    def compute_morphogen_correlation(self, X: torch.Tensor, morphogen_idx1: int, morphogen_idx2: int) -> torch.Tensor:
+        """
+        Compute correlation between two morphogen concentrations for each batch.
+        Args:
+            X: Tensor of shape (batch, m, features) containing batched data
+            morphogen_idx1: Index of the first morphogen value in the features dimension
+            morphogen_idx2: Index of the second morphogen value in the features dimension
+        Returns:
+            correlation: Tensor of shape (batch,) containing the correlation between the two morphogens for each batch
+        """
+        # Extract morphogen values for the specified indices
+        morphogen_vals1 = X[:, :, morphogen_idx1]  # [batch, m]
+        morphogen_vals2 = X[:, :, morphogen_idx2]  # [batch, m]
+
+        # Center the variables for each batch
+        m1_centered = morphogen_vals1 - morphogen_vals1.mean(dim=1, keepdim=True)
+        m2_centered = morphogen_vals2 - morphogen_vals2.mean(dim=1, keepdim=True)
+
+        # Compute correlation for each batch
+        numerator = (m1_centered * m2_centered).sum(dim=1)
+        denominator = torch.sqrt(
+            (m1_centered ** 2).sum(dim=1) *
+            (m2_centered ** 2).sum(dim=1)
+        )
+        correlation = numerator / denominator
+
+        return 20*correlation.abs()  # Absolute value to focus on correlation magnitude
 
     def heartbeat_signal(self, t, amplitude=1.0, period=29.23):
         # Returns a heartbeat-like signal, given a timestep
@@ -724,13 +813,14 @@ class Organism():
     def get_vertices(self):
         return [v for v in range(self.X.shape[1])]
     
-    def get_edges(self, connected_threshold=2.0):
+    def get_edges(self, connected_threshold=1.4):
         vertex_positions = self.X[0, :, 0:3]
         vertex_displacements = vertex_positions[None, :, :] - vertex_positions[:, None, :] # (m x m x 3)
         vertex_distances = torch.norm(vertex_displacements, dim=2)
 
-        num_neighbors = 3
+        num_neighbors = 4
         neighbor_mask = vertex_distances.argsort(dim=1).argsort(dim=1) < num_neighbors+1
+        #neighbor_mask = vertex_distances < connected_threshold
 
         edges = []
         for i in range(self.m):
@@ -742,51 +832,154 @@ class Organism():
     def get_layout(self):
         return {i: self.X[0, i, 0:3].detach().numpy() for i in range(self.m)}
 
-    def get_colours(self):
-        # Normalize the 7th component to [0, 1] for color mapping
-        color_values = self.X[0, :, 7].detach().numpy()
+    def get_colours(self, morphogen_idx=6, use_hsv=False):
+        # Normalize the selected morphogen component to [0, 1] for color mapping
+        color_values = self.X[0, :, morphogen_idx].detach().numpy()
 
-        # Take PCA to find dim of greatest variation for the colour values
-        #pca = PCA(n_components=1)
-        #color_values = pca.fit_transform(self.X[0, :, 6:].detach().numpy())
+        # Apply normalization to the color values
+        norm = Normalize(vmin=color_values.min(), vmax=color_values.max())
+        normalized_values = norm(color_values)
 
-        norm = plt.Normalize(vmin=color_values.min(), vmax=color_values.max())
-        # subtract mean from color values
-        #color_values = color_values - color_values.mean(dim=0, keepdims=True) + 0.5
+        if (self.t // 10) % 2 == 0:
+            morphogen_idx = 6
+        elif (self.t // 10) % 2 == 1:
+            morphogen_idx = 7
+        elif (self.t // 10) % 4 == 2:
+            morphogen_idx = 8
+        else:
+            morphogen_idx = 9
+
+        # Map morphogens to Lab components if use_lab is True
+        if use_hsv:
+            light_values = self.X[0, :, 6].detach().numpy()
+            a_values = self.X[0, :, 7].detach().numpy()
+            b_values = self.X[0, :, 8].detach().numpy()
+
+            # Normalize each morphogen component to [0, 1]
+            norm_light = Normalize(vmin=light_values.min(), vmax=light_values.max())
+            norm_a = Normalize(vmin=a_values.min(), vmax=a_values.max())
+            norm_b = Normalize(vmin=b_values.min(), vmax=b_values.max())
+            # Map each morphogen to Lab space ranges
+            lightness = norm_light(light_values) * 100  # L is typically 0–100 in Lab
+            a_star = norm_a(a_values) * 200 - 100       # a* is typically -100 to 100
+            b_star = norm_b(b_values) * 200 - 100       # b* is typically -100 to 100
+
+            # Combine L, a*, b* values and convert to RGB
+            lab_colors = np.stack([lightness, a_star, b_star], axis=-1)
+            colors = color.lab2rgb(lab_colors)  # Convert Lab to RGB for visualization
+
+            # add alpha channel
+            colors = [list(c) + [1.0] for c in colors]
         
-        # Apply a colormap (e.g., viridis) to get RGBA values for each vertex
-        cmap = plt.cm.viridis
-        colors = cmap(color_values)
-        
+        else:
+            # Use predefined colormaps based on morphogen index
+            if morphogen_idx == 6:
+                cmap = plt.cm.viridis
+            elif morphogen_idx == 7:
+                cmap = plt.cm.plasma
+            elif morphogen_idx == 8:
+                cmap = plt.cm.cividis
+            else:
+                cmap = plt.cm.inferno
+
+            colors = cmap(normalized_values)
+
         # Return colors as a list of RGBA values
         return [colors[i] for i in range(self.m)]
     
-    def write_obj(self, mesh=None):
+    def create_texture(self, colors, filename, target_size=516*2*4):
+        """
+        Creates a 1D texture map from vertex colors with a fixed size of 129.
+        colors: Array of shape (N, 3) or (N, 4) with RGB or RGBA values in [0, 255].
+        filename: Output texture image filename.
+        target_size: Fixed texture size (default 129).
+        """
+        N = colors.shape[0]
+        colors_uint8 = np.flip((colors[:, :3] * 255).astype(np.uint8), axis=0)
+        colors_uint8_out = np.zeros((target_size, 3), dtype=np.uint8)
 
+        # Resize color array to match target size
+        # Upsample to match target size. Simply repeat 
+        # num_repeats = (target_size) // (N)
+        # for i in range(N):
+        #     colors_uint8_out[i*num_repeats:(i+1)*num_repeats] = colors_uint8[i][None, :].repeat(num_repeats, axis=0)
+
+        # instaead we're going to upscale colors_uint8 with a kind of 'reverse pooling'. Basically, we want to divide the output
+        # image into N segments, and assign the color of each segment to the corresponding segment in the output image.
+        # We will have to pay careful attention to the rounding of the indices to avoid off-by-one errors.
+
+        # Create a mapping from the target size to the original size
+        target_to_original = np.linspace(0, N, target_size, endpoint=False)
+        target_to_original = np.floor(target_to_original).astype(np.int32)
+
+        # Assign the colors to the output image
+        for i in range(target_size):
+            colors_uint8_out[i] = colors_uint8[target_to_original[i]]
+
+        # Create an image of size (target_size x 1)
+        texture_image = colors_uint8_out.reshape((target_size, 1, 3))
+        img = Image.fromarray(texture_image, 'RGB')
+        img.save(filename)
+
+
+    def assign_uvs(self, N, target_size=129):
+        """
+        Assign UV coordinates to vertices.
+        N: Number of vertices.
+        Returns an array of shape (N, 2).
+        """
+        u_coords = np.linspace(0, 1.0, N, endpoint=True)
+        v_coords = np.linspace(0, 1.0, N, endpoint=True)
+        uvs = np.column_stack((u_coords, v_coords))
+        return uvs
+
+    def write_obj(self, out_dir=None, morphogen_idx=6):
+        
         points = self.X[0, :, 0:3].detach().numpy()
-        filename = os.path.join(self.obj_out_dir, f'point_cloud_{self.t:04d}.obj')
-        with open(filename, 'w') as f:
-            v_ind = 1
+        edges = self.get_edges()
+        if morphogen_idx == 6:
+            obj_filename = os.path.join(out_dir, f'pc_six_{self.t:04d}.obj')
+            texture_filename = os.path.join(out_dir, f'texture_six_{self.t:04d}.png')
+        elif morphogen_idx == 7:
+            obj_filename = os.path.join(out_dir, f'pc_seven_{self.t:04d}.obj')
+            texture_filename = os.path.join(out_dir, f'texture_seven_{self.t:04d}.png')
+        elif morphogen_idx == 8:
+            obj_filename = os.path.join(out_dir, f'pc_eight_{self.t:04d}.obj')
+            texture_filename = os.path.join(out_dir, f'texture_eight_{self.t:04d}.png')
+
+        N = points.shape[0]
+        uvs = self.assign_uvs(N+1)
+        
+        colors = np.array(self.get_colours(morphogen_idx=morphogen_idx))
+        colors = np.concatenate((colors, np.ones((1, 4))), axis=0)
+        # Create the texture image
+        colors_uint8 = (colors[:, :3] * 255).astype(np.uint8)
+        self.create_texture(colors_uint8, texture_filename)
+
+        # Write the .obj file
+        with open(obj_filename, 'w') as obj_file:
+            #obj_file.write(f'mtllib material_{self.t:04d}.mtl\n')
+            #obj_file.write('usemtl mat0\n')
+            # Write vertices
+            i = 1
             for p in points:
                 x, y, z = p.tolist()
-                f.write(f'v {x} {y} {z}\n')
-                v_ind += 1
-            f.write('v 1.0 0.2 0.0\n')
-            v_ind += 1
+                obj_file.write(f'v {x} {y} {z}\n')
+                obj_file.write(f'f {i}/{i} {i}/{i} {i}/{i}\n')
+                i += 1
 
-            if mesh is not None and self.t >= 470:
-                # init_guess = self.init_guess_params[0]
-                # if (init_guess == 0).all():
-                #     self.obj_loss(self.X, mesh)
-                # init_guess = self.init_guess_params[0]
-                # rot_angles = init_guess[:3]
-                # translation = init_guess[3:]
-                # rotation_matrix = torch.tensor(R.from_euler('xyz', rot_angles).as_matrix(), dtype=torch.float).to(self.device)
-                # transformed_points = (rotation_matrix @ points.T).T #+ translation
+            obj_file.write(f'v 1.0 0.2 0.0\n')
 
-                # pdb.set_trace()
-                for vertex in mesh.vertices:
-                    f.write(f'v {vertex[0]} {vertex[1]} {vertex[2]}\n')
-                for face in mesh.faces:
-                    f.write(f'f {face[0]+v_ind} {face[1]+v_ind} {face[2]+v_ind}\n')
-                
+            #Write UVs
+            for uv in uvs:
+                u, v = uv.tolist()
+                obj_file.write(f'vt {u} {v}\n')
+
+            edges = self.get_edges()
+
+            for edge in edges:
+                i, j = edge
+                obj_file.write(f'l {i+1} {j+1}\n')
+                obj_file.write(f'f {i+1}/{i+1} {j+1}/{j+1} {i+1}/{i+1}\n')
+
+            obj_file.write(f'l 1 1\n')

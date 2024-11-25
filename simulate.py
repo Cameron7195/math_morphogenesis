@@ -4,9 +4,9 @@ import torch
 from tqdm import tqdm
 import trimesh
 
-STATE_SIZE = 22            # 6 position & velocity, 16 cell-state features
+STATE_SIZE = 14            # 6 position & velocity, 16 cell-state features
 D_MODEL = 24               # Hidden dimension of the equivariant transformer
-N_HEADS = 3                # Number of attention heads
+N_HEADS = 4                # Number of attention heads
 N_LAYERS = 1               # Number of transformer layers
 OBJ_FILE = 'models/hand_small.obj'
 
@@ -15,7 +15,7 @@ device = torch.device("cpu")
 def parse_args():
     parser = argparse.ArgumentParser(description='S4 Model')
     parser.add_argument('--num_timesteps', type=int, default=520, help='Number of timesteps to simulate for each organism')
-    parser.add_argument('--model_path', type=str, default='results/models/bptt_equiformer_model_rot_big.pt', help='Path to model')
+    parser.add_argument('--model_path', type=str, default='results/models/bptt_grad_normal_1_osc1.pt', help='Path to model')
     return parser.parse_args()
 
 
